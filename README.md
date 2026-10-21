@@ -48,7 +48,7 @@ The fork retains the upstream receiver capabilities:
 - The redesigned interface has been tested on a Mi TV with a directional-pad remote.
 - Phone and tablet support remains enabled, with stacked layouts on narrow screens and touch controls. The redesigned phone experience has not yet been verified.
 - Connect the receiver and sender to the same local network. Network isolation can prevent discovery.
-- Android may hide the Wi-Fi name; the home screen then displays a connection label instead.
+- To display the Wi-Fi name, select **Show network name** on the home screen, allow precise location access, and enable Android's Location setting. Android treats SSIDs as location-sensitive information. If access is denied, the app shows a connection label and AirPlay still works.
 - DRM-protected content, including protected Apple TV content, is not supported.
 - The audio timeline displays progress only. Video playback has its own controls.
 

@@ -213,6 +213,8 @@ your iPhone, iPad, or Mac</string>
     <string name="airplay_back">Back</string>
     <string name="airplay_network_name">%1$s</string>
     <string name="airplay_network_wifi">Wi-Fi connected</string>
+    <string name="airplay_show_network_name">Show network name</string>
+    <string name="airplay_network_permission_help">To show the Wi-Fi name, allow precise location access and turn on Location in Android settings.</string>
     <string name="airplay_network_ethernet">Ethernet</string>
     <string name="airplay_network_connected">Local network connected</string>
     <string name="airplay_network_disconnected">Not connected</string>

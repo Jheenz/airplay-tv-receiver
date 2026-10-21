@@ -1,11 +1,22 @@
 package io.github.jqssun.airplay.ui
 
+import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -35,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.focusGroup
 import io.github.jqssun.airplay.Prefs
 import io.github.jqssun.airplay.R
+import io.github.jqssun.airplay.appSettingsIntent
 import io.github.jqssun.airplay.service.AirPlayService.ServerState
 import io.github.jqssun.airplay.viewmodel.LocalNetworkAccess
 import io.github.jqssun.airplay.viewmodel.MainViewModel
@@ -127,8 +139,13 @@ internal fun AirPlayColumns(
 internal fun AirPlayHomeScreen(viewModel: MainViewModel, onSettings: () -> Unit) {
     val serverName by viewModel.pref(Prefs.SERVER_NAME).collectAsState()
     val context = LocalContext.current
-    // Android may redact the SSID. Never display <unknown ssid> or request location just for this label.
-    val network by produceState(initialValue = readNetwork(context), context) {
+    var refreshNetwork by remember { mutableIntStateOf(0) }
+    var requestedLocation by remember { mutableStateOf(false) }
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        requestedLocation = true
+        refreshNetwork++
+    }
+    val network by produceState(initialValue = readNetwork(context), context, refreshNetwork) {
         while (true) {
             value = readNetwork(context)
             delay(5000)
@@ -155,6 +172,28 @@ internal fun AirPlayHomeScreen(viewModel: MainViewModel, onSettings: () -> Unit)
             Text(stringResource(R.string.airplay_choose_device), color = Color.White, fontSize = 20.sp)
             Text(serverName, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         }
+        if (network.label == R.string.airplay_network_wifi) {
+            AirPlayMenuRow(stringResource(R.string.airplay_show_network_name), onClick = {
+                val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                val location = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                val activity = generateSequence(context) { (it as? ContextWrapper)?.baseContext }
+                    .filterIsInstance<Activity>().firstOrNull()
+                val intent = when {
+                    !granted && requestedLocation && activity?.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) == false -> context.appSettingsIntent()
+                    !granted -> null
+                    !LocationManagerCompat.isLocationEnabled(location) -> Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                    else -> context.appSettingsIntent()
+                }
+                if (intent == null) {
+                    locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+                } else {
+                    // Some TV firmware does not expose a dedicated Location page.
+                    try { context.startActivity(intent) }
+                    catch (_: android.content.ActivityNotFoundException) { context.startActivity(context.appSettingsIntent()) }
+                }
+            })
+            Text(stringResource(R.string.airplay_network_permission_help), color = Color(0xFFB9BBBB), fontSize = 14.sp)
+        }
         AirPlayMenuRow(stringResource(R.string.airplay_settings), onClick = onSettings,
             modifier = Modifier.focusRequester(settingsFocus))
         Text(stringResource(R.string.airplay_network_help), color = Color(0xFFB9BBBB),
@@ -171,9 +210,13 @@ private fun readNetwork(context: Context): NetworkLabel = try {
     when {
         capabilities == null -> NetworkLabel(R.string.airplay_network_disconnected)
         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> {
-            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) capabilities.transportInfo as? WifiInfo
-                else (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.connectionInfo
-            val ssid = info?.ssid?.trim('"')?.takeIf { it.isNotBlank() && it != WifiManager.UNKNOWN_SSID }
+            // NetworkCapabilities obtained synchronously may redact location-sensitive fields,
+            // even with permission. Read the caller-filtered WifiManager info as a fallback.
+            val transportInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) capabilities.transportInfo as? WifiInfo else null
+            fun WifiInfo?.networkName() = this?.ssid?.removeSurrounding("\"")
+                ?.takeIf { it.isNotBlank() && it != WifiManager.UNKNOWN_SSID }
+            val ssid = transportInfo.networkName()
+                ?: (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.connectionInfo.networkName()
             if (ssid != null) NetworkLabel(R.string.airplay_network_name, arrayOf(ssid))
             else NetworkLabel(R.string.airplay_network_wifi)
         }
