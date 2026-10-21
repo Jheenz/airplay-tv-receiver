@@ -1,14 +1,9 @@
-name: Generate APK
+name: Build signed release (requires signing secrets)
 
 env:
   main_project_module: app
 
 on:
-  push:
-    branches:
-      - "release/**"
-    tags:
-      - "v*.*.*"
   workflow_dispatch:
 
 jobs:

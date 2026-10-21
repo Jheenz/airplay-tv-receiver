@@ -19,6 +19,7 @@ typedef struct {
     jmethodID on_video_size;
     jmethodID on_client_volume;
     jmethodID on_client_volume_query;
+    jmethodID on_audio_running;
     jmethodID on_audio_teardown;
     jmethodID on_conn_init;
     jmethodID on_conn_destroy;
@@ -49,6 +50,7 @@ typedef struct {
     pthread_cond_t play_ready_cond;
     int play_ready;
     AudioEngine *audio_engine;
+    uint64_t last_audio_packet_ns; /* guarded by playback_info_lock */
 } android_callback_ctx_t;
 
 void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject callback_obj);

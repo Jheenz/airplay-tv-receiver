@@ -1,5 +1,6 @@
 package io.github.jqssun.airplay.audio
 
+import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.MediaMetadata
@@ -8,7 +9,7 @@ import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import com.google.common.util.concurrent.MoreExecutors
+import com.google.common.util.concurrent.SettableFuture
 
 // exposes sender's audio session as media3 player
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -18,6 +19,7 @@ class DacpPlayer(
     private val snapshot: () -> Snapshot,
     private val positionMs: () -> Long,
     private val setPlaying: (Boolean) -> Unit,
+    private val setPendingPlayWhenReady: (Boolean?) -> Unit,
 ) : SimpleBasePlayer(looper) {
 
     data class Snapshot(
@@ -27,6 +29,9 @@ class DacpPlayer(
         val playing: Boolean,
         val active: Boolean,
     )
+
+    private val playbackHandler = Handler(looper)
+    private var playCommandGeneration = 0L
 
     // must be called on the constructor looper
     fun refresh() = invalidateState()
@@ -80,12 +85,32 @@ class DacpPlayer(
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
-        val dacp = dacp() ?: return Futures.immediateVoidFuture()
-        return Futures.transform(
-            if (playWhenReady) dacp.play() else dacp.pause(),
-            { setPlaying(playWhenReady) },
-            MoreExecutors.directExecutor()
-        )
+        val controller = dacp() ?: return Futures.immediateVoidFuture()
+        val previousPlaying = snapshot().playing
+        val generation = ++playCommandGeneration
+        // Freeze/resume the receiver clock immediately, before waiting for the sender's HTTP reply.
+        setPendingPlayWhenReady(playWhenReady)
+        setPlaying(playWhenReady)
+        val command = if (playWhenReady) controller.play() else controller.pause()
+        val result = SettableFuture.create<Unit>()
+        command.addListener({
+            try {
+                command.get()
+                if (generation == playCommandGeneration) {
+                    // Progress metadata can arrive while the sender is processing the command.
+                    setPlaying(playWhenReady)
+                    setPendingPlayWhenReady(null)
+                }
+                result.set(Unit)
+            } catch (error: Exception) {
+                if (generation == playCommandGeneration) {
+                    setPlaying(previousPlaying)
+                    setPendingPlayWhenReady(null)
+                }
+                result.setException(error.cause ?: error)
+            }
+        }, { task -> playbackHandler.post(task) })
+        return result
     }
 
     override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {

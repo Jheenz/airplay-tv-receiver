@@ -8,6 +8,7 @@ interface RaopCallbackHandler {
     fun onClientVolume(db: Float)
     // /info initialVolume
     fun onClientVolumeQuery(): Float
+    fun onAudioRunning()
     fun onAudioTeardown()
     fun onConnectionInit()
     fun onConnectionDestroy()

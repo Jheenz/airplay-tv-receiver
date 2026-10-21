@@ -118,7 +118,7 @@
     <string name="setting_aac_desc">Offer AAC-ELD/AAC-LC in the mDNS record; used for screen mirroring audio</string>
     <string name="setting_launch_on_connect">Open this application on connect</string>
     <string name="setting_launch_on_connect_desc">Show the screen when a sender connects</string>
-    <string name="setting_launch_on_connect_no_permission">Tap to grant Display over other apps permission</string>
+    <string name="setting_launch_on_connect_no_permission">Allow Display over other apps for %1$s. Choose this app from the permission list.</string>
     <string name="setting_discovery">Discoverable over</string>
     <string name="setting_discovery_all_desc">Advertise on all usable interfaces. Uses NsdManager.</string>
     <string name="setting_discovery_usb_desc">Only advertise over USB tethering to enforce wired connection. Uses custom mDNS responder.</string>
@@ -201,4 +201,30 @@
     <string name="debug_audio_glitch">Glitch: trim=%1$d drop=%2$d sil=%3$d ur=%4$d xrun=%5$d</string>
     <string name="debug_audio_decode">Decode: %1$s</string>
     <string name="debug_clients">Senders: %1$d</string>
+    <string name="airplay_settings">AirPlay settings</string>
+    <string name="back_airplay_settings">Back to AirPlay settings</string>
+    <string name="airplay_share">Wirelessly share content from
+your iPhone, iPad, or Mac</string>
+    <string name="airplay_network">Wi-Fi Network</string>
+    <string name="airplay_choose_device">Choose This Device</string>
+    <string name="airplay_network_help">Make sure your iPhone, iPad, or Mac is connected to the same network as this device. Then choose this device in Screen Mirroring or AirPlay.</string>
+    <string name="airplay_settings_help">With AirPlay, you can stream content from your iPhone, iPad, or Mac to this device.</string>
+    <string name="airplay_advanced">Advanced settings</string>
+    <string name="airplay_back">Back</string>
+    <string name="airplay_network_name">%1$s</string>
+    <string name="airplay_network_wifi">Wi-Fi connected</string>
+    <string name="airplay_network_ethernet">Ethernet</string>
+    <string name="airplay_network_connected">Local network connected</string>
+    <string name="airplay_network_disconnected">Not connected</string>
+    <string name="airplay_network_unavailable">Network name unavailable</string>
+    <string name="audio_playback_position">Playback position</string>
+    <string name="tv_settings_help">Use the remote to choose a setting. Press OK to change its value.</string>
+    <string name="tv_save">Save</string>
+    <string name="tv_cancel">Cancel</string>
+    <string name="tv_selected">Selected</string>
+    <string name="overlay_settings_unavailable">This device does not provide a Display over other apps permission screen.</string>
+    <string name="audio_previous_track">Previous track</string>
+    <string name="audio_next_track">Next track</string>
+    <string name="audio_play">Play</string>
+    <string name="audio_pause">Pause</string>
 </resources>

@@ -158,9 +158,13 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private val _playing = MutableStateFlow(true)
     val playing = _playing.asStateFlow()
 
+    @Volatile private var _pendingAudioPlayWhenReady: Boolean? = null
+    @Volatile private var _audioPausedFromControl = false
+
     @Volatile private var _progressBaseMs = 0L
     @Volatile private var _progressBaseTime = 0L
 
+    @Synchronized
     fun currentPositionMs(): Long {
         if (_progressBaseTime == 0L || !_playing.value) return _positionMs.value
         val elapsed = SystemClock.elapsedRealtime() - _progressBaseTime
@@ -232,7 +236,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 )
             },
             positionMs = ::currentPositionMs,
-            setPlaying = ::_setPlaying,
+            setPlaying = ::_setAudioPlayingFromControl,
+            setPendingPlayWhenReady = ::_setPendingAudioPlayWhenReady,
         )
         mediaSession = MediaSessionCompat(this, "AirPlay").apply {
             setCallback(object : MediaSessionCompat.Callback() {
@@ -241,7 +246,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                         airPlayVideoPlayer.setPlaying(true)
                         return
                     }
-                    _setPlaying(true)
+                    _setAudioPlayingFromControl(true)
                     dacpController?.play()
                 }
                 override fun onPause() {
@@ -249,7 +254,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                         airPlayVideoPlayer.setPlaying(false)
                         return
                     }
-                    _setPlaying(false)
+                    _setAudioPlayingFromControl(false)
                     dacpController?.pause()
                 }
                 override fun onStop() {
@@ -680,7 +685,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         clearPin()
         audioRenderer.start()
         audioRenderer.setFormat(ct, spf)
-        if (!usingScreen) _setPlaying(true)
+        if (!usingScreen) _setAudioPlayingFromControl(true)
         if (!usingScreen && !_audioOnly.value) {
             // pure music streaming (not screen mirroring audio)
             _setAudioOnly(true)
@@ -814,6 +819,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _trackInfo.value = TrackInfo()
             _positionMs.value = 0
             _durationMs.value = 0
+            _pendingAudioPlayWhenReady = null
+            _audioPausedFromControl = false
             dacpController?.reset()
             _clientVol = null
             _mainHandler.post {
@@ -853,26 +860,50 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onCoverArt(data: ByteArray) {
+        // Pause/resume often resends the same cover. Preserve its bitmap identity so the
+        // UI does not decode and blur identical artwork again.
+        if (_coverArtBytes?.contentEquals(data) == true) return
         val bmp = BitmapFactory.decodeByteArray(data, 0, data.size) ?: return
         _coverArtBytes = data
+        val existingArt = _trackInfo.value.coverArt
+        if (existingArt != null && existingArt.sameAs(bmp)) {
+            bmp.recycle()
+            return
+        }
         _trackInfo.value = _trackInfo.value.copy(coverArt = bmp)
         _updateMediaMetadata()
         _refreshDacpPlayer()
     }
 
+    @Synchronized
     override fun onProgress(start: Long, curr: Long, end: Long) {
         val rate = 44100.0
         val posMs = ((curr - start) / rate * 1000).toLong().coerceAtLeast(0)
         val durMs = ((end - start) / rate * 1000).toLong().coerceAtLeast(0)
         // pause/resume transitions emit degenerate progress; keep the last good value
         if (durMs <= 0) return
+        if (_audioPausedFromControl) {
+            // The sender can deliver trailing progress after pause, even after its HTTP reply.
+            // Keep the frozen position until a control command or real audio resumption.
+            _durationMs.value = durMs
+            return
+        }
         _positionMs.value = posMs
         _durationMs.value = durMs
         _progressBaseMs = posMs
-        _progressBaseTime = SystemClock.elapsedRealtime()
-        _playing.value = true
+        // Timing metadata also arrives during pause; it is not a play command.
+        val playing = _pendingAudioPlayWhenReady ?: true
+        _progressBaseTime = if (playing) SystemClock.elapsedRealtime() else 0L
+        _playing.value = playing
         _updatePlaybackState()
         _refreshDacpPlayer()
+    }
+
+    @Synchronized
+    override fun onAudioRunning() {
+        if (_audioOnly.value && _pendingAudioPlayWhenReady != false) {
+            _setAudioPlayingFromControl(true)
+        }
     }
 
     override fun onAudioTeardown() {
@@ -924,22 +955,33 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
 
     fun togglePlayPause() {
         val nowPlaying = !_playing.value
-        _setPlaying(nowPlaying)
+        _setAudioPlayingFromControl(nowPlaying)
         dacpController?.let { if (nowPlaying) it.play() else it.pause() }
     }
 
+    @Synchronized
+    private fun _setPendingAudioPlayWhenReady(playing: Boolean?) {
+        _pendingAudioPlayWhenReady = playing
+    }
+
+    @Synchronized
+    private fun _setAudioPlayingFromControl(playing: Boolean) {
+        _audioPausedFromControl = !playing
+        _setPlaying(playing)
+    }
+
+    @Synchronized
     private fun _setPlaying(playing: Boolean) {
-        _playing.value = playing
-        _refreshDacpPlayer()
-        if (playing) {
-            // resume extrapolation from current position
-            _progressBaseMs = _positionMs.value
-            _progressBaseTime = SystemClock.elapsedRealtime()
-        } else {
-            // freeze position
-            _positionMs.value = currentPositionMs()
-            _progressBaseTime = 0
+        // Capture the live position while the old playing state still allows extrapolation.
+        // Duplicate confirmations must not restart the clock or rewind it to old sender metadata.
+        if (_playing.value != playing) {
+            val position = currentPositionMs()
+            _positionMs.value = position
+            _progressBaseMs = position
+            _progressBaseTime = if (playing) SystemClock.elapsedRealtime() else 0L
+            _playing.value = playing
         }
+        _refreshDacpPlayer()
         _updatePlaybackState()
     }
 

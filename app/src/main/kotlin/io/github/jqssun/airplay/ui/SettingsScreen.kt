@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -29,14 +30,13 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.jqssun.airplay.Prefs
 import io.github.jqssun.airplay.R
-import io.github.jqssun.airplay.appSettingsIntent
 import io.github.jqssun.airplay.viewmodel.MainViewModel
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import kotlin.math.roundToInt
 
 @Composable
-fun SettingsScreen(viewModel: MainViewModel) {
+fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit = {}) {
     val serverName by viewModel.pref(Prefs.SERVER_NAME).collectAsState()
     val h265 by viewModel.pref(Prefs.H265).collectAsState()
     val enforceSdr by viewModel.pref(Prefs.ENFORCE_SDR).collectAsState()
@@ -81,12 +81,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
         Prefs.OFF to stringResource(R.string.chip_off),
     )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 8.dp)
-    ) {
+    val tv = isTv()
+    val settingsContent: @Composable ColumnScope.() -> Unit = {
         SectionHeader(stringResource(R.string.section_server))
 
         SettingTextField(
@@ -155,26 +151,15 @@ fun SettingsScreen(viewModel: MainViewModel) {
         }
         val needsOverlayPermission = launchOnConnect && !hasOverlayPermission
         val autoLaunch = launchOnConnect && hasOverlayPermission
-        ListItem(
-            modifier = Modifier
-                .dpadFocus(RectangleShape)
-                .toggleable(
-                    value = autoLaunch,
-                    role = Role.Switch,
-                    onValueChange = {
-                        viewModel.set(Prefs.LAUNCH_ON_CONNECT, it)
-                        if (it && !canAutoLaunch(ctx)) _openOverlaySettings(ctx)
-                    }
-                ),
-            headlineContent = { Text(stringResource(R.string.setting_launch_on_connect)) },
-            supportingContent = {
-                Text(stringResource(
-                    if (needsOverlayPermission) R.string.setting_launch_on_connect_no_permission
-                    else R.string.setting_launch_on_connect_desc
-                ))
-            },
-            trailingContent = {
-                Switch(checked = autoLaunch, onCheckedChange = null)
+        SettingSwitch(
+            title = stringResource(R.string.setting_launch_on_connect),
+            description = if (needsOverlayPermission) {
+                stringResource(R.string.setting_launch_on_connect_no_permission, stringResource(R.string.app_name))
+            } else stringResource(R.string.setting_launch_on_connect_desc),
+            checked = autoLaunch,
+            onCheckedChange = {
+                viewModel.set(Prefs.LAUNCH_ON_CONNECT, it)
+                if (it && !canAutoLaunch(ctx)) _openOverlaySettings(ctx)
             }
         )
 
@@ -357,6 +342,15 @@ fun SettingsScreen(viewModel: MainViewModel) {
             )
 
             if (audioLatencyMs >= 0) {
+                if (tv) {
+                    TvChoiceSetting(
+                        title = stringResource(R.string.setting_audio_delay),
+                        description = stringResource(R.string.setting_audio_delay_desc),
+                        value = audioLatencyMs,
+                        options = (0..1000 step 50).map { it to stringResource(R.string.audio_delay_value, it) },
+                        onValueChange = { viewModel.set(Prefs.AUDIO_LATENCY_MS, it) }
+                    )
+                } else {
                 var sliderVal by remember(audioLatencyMs) { mutableFloatStateOf(audioLatencyMs.toFloat()) }
                 ListItem(
                     headlineContent = {
@@ -374,6 +368,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     },
                     trailingContent = { Text(stringResource(R.string.audio_delay_value, sliderVal.roundToInt())) }
                 )
+                }
             }
 
             SettingSwitch(
@@ -385,6 +380,16 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
             if (audioAutoBuffer) {
                 val maxStep = Prefs.AUDIO_ADAPTIVE_STEP.range.last
+                if (tv) {
+                    val names = stringArrayResource(R.array.audio_adaptive_step_names)
+                    TvChoiceSetting(
+                        title = stringResource(R.string.setting_audio_auto_buffer),
+                        description = stringResource(R.string.setting_audio_auto_buffer_desc),
+                        value = audioAdaptiveStep,
+                        options = (0..maxStep).map { step -> step to stringResource(R.string.audio_adaptive_value, Prefs.ADAPTIVE_PERCENTILES[step], names[step]) },
+                        onValueChange = { viewModel.set(Prefs.AUDIO_ADAPTIVE_STEP, it) }
+                    )
+                } else {
                 var stepVal by remember(audioAdaptiveStep) { mutableFloatStateOf(audioAdaptiveStep.toFloat()) }
                 ListItem(
                     headlineContent = {
@@ -407,6 +412,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             stringArrayResource(R.array.audio_adaptive_step_names)[step]))
                     }
                 )
+                }
             } else {
                 SettingTextField(
                     label = stringResource(R.string.setting_audio_cushion_ms),
@@ -441,19 +447,36 @@ fun SettingsScreen(viewModel: MainViewModel) {
             )
         }
     }
+    if (tv) {
+        TvAdvancedSettingsFrame(onBack = onBack, content = settingsContent)
+    } else {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+            AirPlayMenuRow(stringResource(R.string.back_airplay_settings), onClick = onBack)
+            settingsContent()
+        }
+    }
 }
 
 private fun canAutoLaunch(ctx: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || Settings.canDrawOverlays(ctx)
 
-// overlay settings screen may not exist on some builds
+// Some TV Settings apps accept only the general permission list, with no package URI.
 private fun _openOverlaySettings(ctx: Context) {
-    val overlay = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
-    try {
-        ctx.startActivity(overlay.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    } catch (_: ActivityNotFoundException) {
-        ctx.startActivity(ctx.appSettingsIntent().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    val destinations = listOf(
+        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.fromParts("package", ctx.packageName, null)),
+        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+    )
+    for (destination in destinations) {
+        try {
+            ctx.startActivity(destination.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        } catch (_: ActivityNotFoundException) {
+            // Try the permission list if an app-specific page is unavailable.
+        } catch (_: SecurityException) {
+            // Some vendor Settings activities are not accessible to other apps.
+        }
     }
+    Toast.makeText(ctx, R.string.overlay_settings_unavailable, Toast.LENGTH_LONG).show()
 }
 
 @Composable
@@ -462,7 +485,7 @@ private fun SectionHeader(title: String) {
         text = title,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
     )
 }
 
@@ -482,6 +505,19 @@ private fun SettingResolution(
         Prefs.PORTRAIT to stringResource(R.string.chip_device_portrait),
         Prefs.LANDSCAPE to stringResource(R.string.chip_device_landscape)
     )
+    if (isTv()) {
+        TvChoiceSetting(
+            title = stringResource(R.string.setting_resolution),
+            description = stringResource(R.string.setting_resolution_desc), value = value,
+            options = presets + devicePresets,
+            customValidator = { text ->
+                val dimensions = text.lowercase().split("x")
+                dimensions.size == 2 && dimensions.all { (it.toIntOrNull() ?: 0) in 1..16384 }
+            },
+            onCustomValueChange = onValueChange, onValueChange = onValueChange
+        )
+        return
+    }
     val isPreset = (presets + devicePresets).any { it.first == value }
     var editing by remember { mutableStateOf(false) }
     val parts = if (!isPreset && value.contains("x")) value.split("x", limit = 2) else listOf("", "")
@@ -569,6 +605,10 @@ private fun SettingTextField(
     description: String? = null,
     range: IntRange? = null
 ) {
+    if (isTv()) {
+        TvTextSetting(label, value, description, range, onCommit)
+        return
+    }
     var text by remember(value) { mutableStateOf(value) }
     val valid = range == null || text.toIntOrNull()?.let { it in range } == true
     fun save() {
@@ -604,6 +644,12 @@ private fun SettingChipField(
     keyboardType: KeyboardType = KeyboardType.Text,
     onValueChange: (String) -> Unit
 ) {
+    if (isTv()) {
+        TvChoiceSetting(title, description, value, presets,
+            customValidator = { it.isNotBlank() && (keyboardType != KeyboardType.Number || (it.toIntOrNull() ?: 0) > 0) },
+            onCustomValueChange = onValueChange, onValueChange = onValueChange)
+        return
+    }
     val isPreset = presets.any { it.first == value }
     var editing by remember { mutableStateOf(false) }
     var text by remember(value) { mutableStateOf(if (isPreset) "" else value) }
@@ -676,6 +722,10 @@ private fun SettingChips(
     options: List<Pair<String, String>>,
     onValueChange: (String) -> Unit
 ) {
+    if (isTv()) {
+        TvChoiceSetting(title, description, value, options, onValueChange = onValueChange)
+        return
+    }
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = {
@@ -696,6 +746,10 @@ private fun <T> SettingSegmented(
     options: List<Pair<T, String>>,
     onValueChange: (T) -> Unit
 ) {
+    if (isTv()) {
+        TvChoiceSetting(title, summary, value, options, onValueChange = onValueChange)
+        return
+    }
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = {
@@ -727,6 +781,11 @@ private fun SettingSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    if (isTv()) {
+        TvSettingRow(title, stringResource(if (checked) R.string.chip_on else R.string.chip_off), description,
+            onClick = { onCheckedChange(!checked) })
+        return
+    }
     ListItem(
         modifier = Modifier
             .dpadFocus(RectangleShape)

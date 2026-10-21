@@ -37,6 +37,7 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     ctx->require_pin = 0;
     ctx->registered_count = 0;
     ctx->audio_engine = NULL;
+    ctx->last_audio_packet_ns = 0;
     memset(ctx->registered_keys, 0, sizeof(ctx->registered_keys));
 
     pthread_mutex_init(&ctx->playback_info_lock, NULL);
@@ -54,6 +55,7 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     ctx->on_video_size = (*env)->GetMethodID(env, cls, "onVideoSize", "(FFFF)V");
     ctx->on_client_volume = (*env)->GetMethodID(env, cls, "onClientVolume", "(F)V");
     ctx->on_client_volume_query = (*env)->GetMethodID(env, cls, "onClientVolumeQuery", "()F");
+    ctx->on_audio_running = (*env)->GetMethodID(env, cls, "onAudioRunning", "()V");
     ctx->on_audio_teardown = (*env)->GetMethodID(env, cls, "onAudioTeardown", "()V");
     ctx->on_conn_init = (*env)->GetMethodID(env, cls, "onConnectionInit", "()V");
     ctx->on_conn_destroy = (*env)->GetMethodID(env, cls, "onConnectionDestroy", "()V");
@@ -105,6 +107,19 @@ void android_callbacks_update_playback_info(android_callback_ctx_t *ctx, double 
 static void _audio_process(void *cls, raop_ntp_t *ntp, audio_decode_struct *data) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     if (!ctx->audio_engine || !data->data || data->data_len <= 0) return;
+    /* Notify Kotlin only at the start of a burst, not for every audio packet.
+       This distinguishes actual resumption from late metadata received during pause. */
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    uint64_t now_ns = (uint64_t)now.tv_sec * 1000000000ULL + now.tv_nsec;
+    pthread_mutex_lock(&ctx->playback_info_lock);
+    uint64_t last_ns = ctx->last_audio_packet_ns;
+    ctx->last_audio_packet_ns = now_ns;
+    pthread_mutex_unlock(&ctx->playback_info_lock);
+    if (last_ns == 0 || now_ns - last_ns > 1000000000ULL) {
+        JNIEnv *env = _get_env(ctx);
+        if (env) (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_audio_running);
+    }
     audio_engine_decode(ctx->audio_engine, data->data, data->data_len,
                         (int)data->ct, (int64_t)data->ntp_time_local);
 }
@@ -223,6 +238,9 @@ static void _audio_flush(void *cls) { LOGI("audio_flush"); }
 static void _audio_stop_coverart_rendering(void *cls) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
     LOGI("audio_teardown");
+    pthread_mutex_lock(&ctx->playback_info_lock);
+    ctx->last_audio_packet_ns = 0;
+    pthread_mutex_unlock(&ctx->playback_info_lock);
     JNIEnv *env = _get_env(ctx);
     if (!env) return;
     (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_audio_teardown);
