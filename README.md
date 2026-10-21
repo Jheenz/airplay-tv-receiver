@@ -50,6 +50,7 @@ The fork retains the upstream receiver capabilities:
 - Connect the receiver and sender to the same local network. Network isolation can prevent discovery.
 - To display the Wi-Fi name, select **Show network name** on the home screen, allow precise location access, and enable Android's Location setting. Android treats SSIDs as location-sensitive information. If access is denied, the app shows a connection label and AirPlay still works.
 - DRM-protected content, including protected Apple TV content, is not supported.
+- Direct AirPlay from the macOS Music app can fail with “not compatible with this version of Music.” A tested Mac sent a FairPlay v2 handshake; the bundled UxPlay implementation accepts v3 only. Selecting the receiver through macOS Sound / Control Center can still stream system audio, but artwork and track details may be unavailable. Enabling ALAC alone does not resolve this handshake mismatch.
 - The audio timeline displays progress only. Video playback has its own controls.
 
 ## Getting started

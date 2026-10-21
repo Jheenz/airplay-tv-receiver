@@ -1,0 +1,15 @@
+diff --git a/lib/raop.c b/lib/raop.c
+--- a/lib/raop.c
++++ b/lib/raop.c
+@@ -477,0 +478,11 @@
++    /* Report handshake shape without logging keys or challenge payloads. */
++    if (!strcmp(method, "POST") && !strncmp(url, "/fp-setup", 9)) {
++        int fp_len = 0;
++        const unsigned char *fp_data = (const unsigned char *)
++            http_request_get_data(request, &fp_len);
++        logger_log(raop->logger, LOGGER_INFO,
++                   "FairPlay request: %s %s, bytes=%d, version=%d, handled=%d",
++                   url, protocol, fp_len,
++                   fp_data && fp_len >= 5 ? fp_data[4] : -1, handler != NULL);
++    }
++

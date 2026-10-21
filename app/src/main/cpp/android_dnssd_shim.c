@@ -25,6 +25,7 @@ typedef struct {
 typedef struct {
     txt_entry_t entries[MAX_TXT_ENTRIES];
     int count;
+    char wire[MAX_TXT_ENTRIES * (1 + MAX_TXT_KEY + MAX_TXT_VAL)];
 } txt_record_t;
 
 struct dnssd_s {
@@ -196,14 +197,33 @@ dnssd_register_airplay(dnssd_t *dnssd, unsigned short port)
 void dnssd_unregister_raop(dnssd_t *dnssd) {}
 void dnssd_unregister_airplay(dnssd_t *dnssd) {}
 
+/* /info returns the same DNS-SD TXT records advertised by NsdManager.
+ * Each key=value entry has a one-byte length prefix, with no trailing NUL. */
+static const char *_txt_wire(txt_record_t *rec, int *length) {
+    size_t offset = 0;
+    for (int i = 0; i < rec->count; i++) {
+        const txt_entry_t *entry = &rec->entries[i];
+        size_t key_len = strlen(entry->key);
+        size_t val_len = strlen(entry->val);
+        size_t entry_len = key_len + 1 + val_len;
+        assert(entry_len <= 255);
+        rec->wire[offset++] = (unsigned char) entry_len;
+        memcpy(rec->wire + offset, entry->key, key_len);
+        offset += key_len;
+        rec->wire[offset++] = '=';
+        memcpy(rec->wire + offset, entry->val, val_len);
+        offset += val_len;
+    }
+    if (length) *length = (int) offset;
+    return rec->wire;
+}
+
 const char *dnssd_get_raop_txt(dnssd_t *dnssd, int *length) {
-    if (length) *length = 0;
-    return NULL;
+    return _txt_wire(&dnssd->raop_record, length);
 }
 
 const char *dnssd_get_airplay_txt(dnssd_t *dnssd, int *length) {
-    if (length) *length = 0;
-    return NULL;
+    return _txt_wire(&dnssd->airplay_record, length);
 }
 
 const char *dnssd_get_name(dnssd_t *dnssd, int *length) {
