@@ -33,8 +33,8 @@ android {
         applicationId = "io.github.jqssun.airplay"
         minSdk = 23
         targetSdk = 37
-        versionCode = 39
-        versionName = "0.1.2"
+        versionCode = 40
+        versionName = "0.1.3"
 
         externalNativeBuild {
             cmake {

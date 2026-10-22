@@ -77,6 +77,16 @@ internal fun AudioNowPlayingScreen(
         if (artwork != null) value = withContext(Dispatchers.Default) { blurArtwork(artwork) }
     }
     val player = viewModel.dacpPlayer
+    var playing by remember(player) { mutableStateOf(player?.playWhenReady == true) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                playing = player.playWhenReady
+            }
+        }
+        player?.addListener(listener)
+        onDispose { player?.removeListener(listener) }
+    }
     // Not every sender supplies artwork or metadata. Allow a normal fallback player after
     // a short wait, while continuing to accept late metadata and artwork.
     var metadataWaitExpired by remember { mutableStateOf(false) }
@@ -89,6 +99,10 @@ internal fun AudioNowPlayingScreen(
     }
     val loading = isConnecting || player == null ||
         (!metadataWaitExpired && (artwork == null || track.title.isBlank()))
+    val artworkScale by animateFloatAsState(
+        targetValue = if (loading || playing) 1f else 0.85f,
+        animationSpec = tween(350), label = "artworkPlaybackScale"
+    )
     val skeletonAlpha = if (loading) {
         val transition = rememberInfiniteTransition(label = "playerLoading")
         val alpha by transition.animateFloat(0.10f, 0.20f,
@@ -122,7 +136,9 @@ internal fun AudioNowPlayingScreen(
             }
             Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center) {
-                Box(Modifier.weight(1f, fill = false).widthIn(max = 440.dp).aspectRatio(1f).shadow(24.dp, RoundedCornerShape(8.dp))
+                Box(Modifier.weight(1f, fill = false).widthIn(max = 440.dp).aspectRatio(1f)
+                    .graphicsLayer { scaleX = artworkScale; scaleY = artworkScale }
+                    .shadow(24.dp, RoundedCornerShape(8.dp))
                     .clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center) {
                     if (loading) {
@@ -142,18 +158,18 @@ internal fun AudioNowPlayingScreen(
                     Text(track.title.ifEmpty { stringResource(R.string.unknown_track) }, color = Color.White,
                         fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                         overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                    if (track.artist.isNotEmpty()) Text(track.artist, color = Color.White.copy(alpha = 0.8f),
-                        fontSize = 17.sp, lineHeight = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    if (track.artist.isNotEmpty()) Text(track.artist, color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 14.sp, lineHeight = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 4.dp))
                 }
             }
             Spacer(Modifier.height(20.dp))
             if (loading) {
-                Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(24.dp),
+                Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    PlayerSkeleton(56.dp, 56.dp, skeletonAlpha, round = true)
-                    PlayerSkeleton(64.dp, 64.dp, skeletonAlpha, round = true)
-                    PlayerSkeleton(56.dp, 56.dp, skeletonAlpha, round = true)
+                    PlayerSkeleton(48.dp, 48.dp, skeletonAlpha, round = true)
+                    PlayerSkeleton(52.dp, 52.dp, skeletonAlpha, round = true)
+                    PlayerSkeleton(48.dp, 48.dp, skeletonAlpha, round = true)
                 }
                 Column(Modifier.widthIn(max = 1000.dp).fillMaxWidth()) {
                     Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
@@ -165,7 +181,7 @@ internal fun AudioNowPlayingScreen(
                     }
                 }
             } else if (player != null) {
-                AudioTransportControls(player, playFocus)
+                AudioTransportControls(player, playFocus, playing)
                 AudioProgress(player)
             }
         }
@@ -223,13 +239,11 @@ private fun AudioControlButton(
 }
 
 @Composable
-private fun AudioTransportControls(player: Player, playFocus: FocusRequester) {
-    var playing by remember(player) { mutableStateOf(player.playWhenReady) }
+private fun AudioTransportControls(player: Player, playFocus: FocusRequester, playing: Boolean) {
     var commands by remember(player) { mutableStateOf(player.availableCommands) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
-                playing = player.playWhenReady
                 commands = player.availableCommands
             }
         }
@@ -238,19 +252,21 @@ private fun AudioTransportControls(player: Player, playFocus: FocusRequester) {
     }
     Row(
         Modifier.padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically
     ) {
         AudioControlButton(Icons.Rounded.FastRewind, stringResource(R.string.audio_previous_track),
-            onClick = { player.seekToPreviousMediaItem() }, enabled = commands.contains(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM))
+            onClick = { player.seekToPreviousMediaItem() }, size = 48.dp, iconSize = 26.dp,
+            enabled = commands.contains(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM))
         AudioControlButton(
             if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
             stringResource(if (playing) R.string.audio_pause else R.string.audio_play),
             onClick = { if (player.playWhenReady) player.pause() else player.play() },
-            modifier = Modifier.focusRequester(playFocus), size = 64.dp, iconSize = 36.dp, prominent = true,
+            modifier = Modifier.focusRequester(playFocus), size = 52.dp, iconSize = 30.dp, prominent = true,
             enabled = commands.contains(Player.COMMAND_PLAY_PAUSE)
         )
         AudioControlButton(Icons.Rounded.FastForward, stringResource(R.string.audio_next_track),
-            onClick = { player.seekToNextMediaItem() }, enabled = commands.contains(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM))
+            onClick = { player.seekToNextMediaItem() }, size = 48.dp, iconSize = 26.dp,
+            enabled = commands.contains(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM))
     }
 }
 
