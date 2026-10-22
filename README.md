@@ -22,6 +22,8 @@ Captured from the app running on a Mi TV. The receiver name and network informat
 - TV settings with a fixed left panel and independently scrolling options on the right.
 - Remote-friendly advanced settings, value-selection dialogs, and text editing.
 - Now Playing screen with centered album art, track information, and a stable blurred-artwork background.
+- Smooth artwork and blurred-background crossfades when the cover changes, with a separate pause/shrink animation.
+- Full-screen AirPlay passcode tiles that bring the app forward when a sender requests a PIN.
 - Play/pause, previous, and next controls with filled focus highlights instead of outlines.
 - A display-only audio timeline showing elapsed and remaining time. Audio scrubbing is disabled.
 - Pause-state synchronization that freezes the timer and prevents late metadata from restarting the paused UI.

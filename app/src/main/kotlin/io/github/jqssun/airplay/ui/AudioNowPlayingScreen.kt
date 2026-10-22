@@ -1,6 +1,8 @@
 package io.github.jqssun.airplay.ui
 
+import android.graphics.Bitmap
 import androidx.annotation.OptIn
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -35,6 +37,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -57,6 +60,8 @@ import androidx.media3.common.util.UnstableApi
 import io.github.jqssun.airplay.R
 import io.github.jqssun.airplay.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 @OptIn(UnstableApi::class)
@@ -67,6 +72,12 @@ internal fun AudioNowPlayingScreen(
 ) {
     val track by viewModel.trackInfo.collectAsState()
     val artwork = track.coverArt
+    val background by produceState<Bitmap?>(null, artwork) {
+        // Retain the previous background while preparing the next one off the UI thread.
+        value = artwork?.let { cover ->
+            withContext(Dispatchers.Default) { blurArtwork(cover) }
+        }
+    }
     val player = viewModel.dacpPlayer
     var playing by remember(player) { mutableStateOf(player?.playWhenReady == true) }
     DisposableEffect(player) {
@@ -108,6 +119,19 @@ internal fun AudioNowPlayingScreen(
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Crossfade(
+            targetState = background, animationSpec = tween(800),
+            modifier = Modifier.fillMaxSize(), label = "artworkBackgroundCrossfade"
+        ) { bitmap ->
+            if (bitmap != null) {
+                Image(bitmap.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+        }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
+            Color.Black.copy(alpha = 0.35f),
+            Color.Black.copy(alpha = 0.5f),
+            Color.Black.copy(alpha = 0.8f)
+        ))))
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 40.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -126,13 +150,23 @@ internal fun AudioNowPlayingScreen(
                     .shadow(24.dp, RoundedCornerShape(8.dp))
                     .clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center) {
-                    if (loading) {
+                    if (loading && artwork == null) {
                         Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = skeletonAlpha)))
-                    } else if (artwork != null) {
-                        Image(artwork.asImageBitmap(), stringResource(R.string.cd_cover_art),
-                            Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     } else {
-                        Icon(Icons.Default.MusicNote, null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(80.dp))
+                        Crossfade(
+                            targetState = artwork, animationSpec = tween(500),
+                            modifier = Modifier.fillMaxSize(), label = "coverArtworkCrossfade"
+                        ) { cover ->
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                if (cover != null) {
+                                    Image(cover.asImageBitmap(), stringResource(R.string.cd_cover_art),
+                                        Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                } else {
+                                    Icon(Icons.Default.MusicNote, null, tint = Color.White.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(80.dp))
+                                }
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -287,4 +321,27 @@ private fun AudioProgress(player: Player) {
                 color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
         }
     }
+}
+
+/** Blur a small copy so artwork transitions stay inexpensive on TV hardware. */
+private fun blurArtwork(artwork: Bitmap): Bitmap {
+    val size = 32
+    val small = Bitmap.createScaledBitmap(artwork, size, size, true)
+    var pixels = IntArray(size * size)
+    small.getPixels(pixels, 0, size, 0, 0, size, size)
+    repeat(3) {
+        val result = IntArray(pixels.size)
+        for (y in 0 until size) for (x in 0 until size) {
+            var red = 0; var green = 0; var blue = 0
+            for (dy in -2..2) for (dx in -2..2) {
+                val color = pixels[(y + dy).coerceIn(0, size - 1) * size + (x + dx).coerceIn(0, size - 1)]
+                red += (color ushr 16) and 255
+                green += (color ushr 8) and 255
+                blue += color and 255
+            }
+            result[y * size + x] = android.graphics.Color.rgb(red / 25, green / 25, blue / 25)
+        }
+        pixels = result
+    }
+    return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
 }
