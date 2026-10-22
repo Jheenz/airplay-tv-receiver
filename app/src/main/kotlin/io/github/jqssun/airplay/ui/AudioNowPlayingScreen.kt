@@ -2,7 +2,10 @@ package io.github.jqssun.airplay.ui
 
 import android.graphics.Bitmap
 import androidx.annotation.OptIn
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -71,13 +74,24 @@ internal fun AudioNowPlayingScreen(
     isConnecting: Boolean = false
 ) {
     val track by viewModel.trackInfo.collectAsState()
-    val artwork = track.coverArt
-    val background by produceState<Bitmap?>(null, artwork) {
-        // Retain the previous background while preparing the next one off the UI thread.
-        value = artwork?.let { cover ->
-            withContext(Dispatchers.Default) { blurArtwork(cover) }
+    val receivedArtwork = track.coverArt
+    val preparedArtwork by produceState<PreparedArtwork?>(null, receivedArtwork) {
+        if (receivedArtwork == null) {
+            // Metadata and covers arrive separately. Keep both displayed images through
+            // a short gap, but eventually show the fallback for a track without artwork.
+            delay(4000)
+            value = null
+        } else {
+            value = withContext(Dispatchers.Default) {
+                val blurred = blurArtwork(receivedArtwork)
+                receivedArtwork.prepareToDraw()
+                blurred.prepareToDraw()
+                PreparedArtwork(receivedArtwork, blurred)
+            }
         }
     }
+    val artwork = preparedArtwork?.cover
+    val background = preparedArtwork?.background
     val player = viewModel.dacpPlayer
     var playing by remember(player) { mutableStateOf(player?.playWhenReady == true) }
     DisposableEffect(player) {
@@ -119,8 +133,8 @@ internal fun AudioNowPlayingScreen(
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Crossfade(
-            targetState = background, animationSpec = tween(800),
+        ArtworkCrossfade(
+            artwork = background, durationMillis = 800,
             modifier = Modifier.fillMaxSize(), label = "artworkBackgroundCrossfade"
         ) { bitmap ->
             if (bitmap != null) {
@@ -150,23 +164,22 @@ internal fun AudioNowPlayingScreen(
                     .shadow(24.dp, RoundedCornerShape(8.dp))
                     .clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center) {
-                    if (loading && artwork == null) {
-                        Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = skeletonAlpha)))
-                    } else {
-                        Crossfade(
-                            targetState = artwork, animationSpec = tween(500),
-                            modifier = Modifier.fillMaxSize(), label = "coverArtworkCrossfade"
-                        ) { cover ->
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                if (cover != null) {
-                                    Image(cover.asImageBitmap(), stringResource(R.string.cd_cover_art),
-                                        Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                } else {
-                                    Icon(Icons.Default.MusicNote, null, tint = Color.White.copy(alpha = 0.7f),
-                                        modifier = Modifier.size(80.dp))
-                                }
+                    ArtworkCrossfade(
+                        artwork = artwork, durationMillis = 500,
+                        modifier = Modifier.fillMaxSize(), label = "coverArtworkCrossfade"
+                    ) { cover ->
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            if (cover != null) {
+                                Image(cover.asImageBitmap(), stringResource(R.string.cd_cover_art),
+                                    Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            } else {
+                                Icon(Icons.Default.MusicNote, null, tint = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(80.dp))
                             }
                         }
+                    }
+                    if (loading && artwork == null) {
+                        Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = skeletonAlpha)))
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -205,6 +218,35 @@ internal fun AudioNowPlayingScreen(
             }
         }
     }
+}
+
+private data class PreparedArtwork(val cover: Bitmap, val background: Bitmap)
+private data class ArtworkLayer(val bitmap: Bitmap?, val order: Int)
+
+/** Blend the incoming image over the old one without exposing the black base layer. */
+@Composable
+private fun ArtworkCrossfade(
+    artwork: Bitmap?,
+    durationMillis: Int,
+    modifier: Modifier = Modifier,
+    label: String,
+    content: @Composable (Bitmap?) -> Unit
+) {
+    val sequence = remember { intArrayOf(0) }
+    val layer = remember(artwork) { ArtworkLayer(artwork, sequence[0]++) }
+    AnimatedContent(
+        targetState = layer,
+        modifier = modifier,
+        transitionSpec = {
+            // Unlike a zero-duration delayed fade, this holds the outgoing layer
+            // until the incoming animation actually finishes. Newer images must
+            // stay on top even when rapid track changes interrupt a transition.
+            (fadeIn(tween(durationMillis)) togetherWith ExitTransition.KeepUntilTransitionsFinished)
+                .apply { targetContentZIndex = targetState.order.toFloat() }
+                .using(null)
+        },
+        label = label
+    ) { frame -> content(frame.bitmap) }
 }
 
 @Composable
