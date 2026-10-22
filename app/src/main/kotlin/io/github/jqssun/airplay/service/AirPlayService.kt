@@ -892,7 +892,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _durationMs.value = durMs
         _progressBaseMs = posMs
         // Timing metadata also arrives during pause; it is not a play command.
-        val playing = _pendingAudioPlayWhenReady ?: true
+        val playing = _pendingAudioPlayWhenReady ?: _playing.value
         _progressBaseTime = if (playing) SystemClock.elapsedRealtime() else 0L
         _playing.value = playing
         _updatePlaybackState()
@@ -906,8 +906,18 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         }
     }
 
+    @Synchronized
+    override fun onAudioFlush() {
+        // Sender pause (and seeks) flush the stream without closing the session.
+        // Metadata cannot resume playback; the next actual audio burst does that.
+        if (_audioOnly.value && _pendingAudioPlayWhenReady != true) {
+            _setAudioPlayingFromControl(false)
+        }
+    }
+
+    @Synchronized
     override fun onAudioTeardown() {
-        _setPlaying(false)
+        if (_audioOnly.value) _setAudioPlayingFromControl(false)
     }
 
     override fun onDacpId(dacpId: String, activeRemote: String) {

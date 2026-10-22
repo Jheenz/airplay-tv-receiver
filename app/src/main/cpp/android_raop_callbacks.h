@@ -20,6 +20,7 @@ typedef struct {
     jmethodID on_client_volume;
     jmethodID on_client_volume_query;
     jmethodID on_audio_running;
+    jmethodID on_audio_flush;
     jmethodID on_audio_teardown;
     jmethodID on_conn_init;
     jmethodID on_conn_destroy;

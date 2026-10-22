@@ -56,6 +56,7 @@ void android_callbacks_init(android_callback_ctx_t *ctx, JNIEnv *env, jobject ca
     ctx->on_client_volume = (*env)->GetMethodID(env, cls, "onClientVolume", "(F)V");
     ctx->on_client_volume_query = (*env)->GetMethodID(env, cls, "onClientVolumeQuery", "()F");
     ctx->on_audio_running = (*env)->GetMethodID(env, cls, "onAudioRunning", "()V");
+    ctx->on_audio_flush = (*env)->GetMethodID(env, cls, "onAudioFlush", "()V");
     ctx->on_audio_teardown = (*env)->GetMethodID(env, cls, "onAudioTeardown", "()V");
     ctx->on_conn_init = (*env)->GetMethodID(env, cls, "onConnectionInit", "()V");
     ctx->on_conn_destroy = (*env)->GetMethodID(env, cls, "onConnectionDestroy", "()V");
@@ -233,7 +234,14 @@ static void _video_reset(void *cls, reset_type_t t) {
         raop_remove_hls_connections(ctx->raop);
     }
 }
-static void _audio_flush(void *cls) { LOGI("audio_flush"); }
+static void _audio_flush(void *cls) {
+    android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
+    LOGI("audio_flush");
+    /* Keep the packet history: buffered packets after FLUSH are not a new
+       playback burst. Only audio following an actual idle gap can resume UI. */
+    JNIEnv *env = _get_env(ctx);
+    if (env) (*env)->CallVoidMethod(env, ctx->callback_obj, ctx->on_audio_flush);
+}
 
 static void _audio_stop_coverart_rendering(void *cls) {
     android_callback_ctx_t *ctx = (android_callback_ctx_t *)cls;
