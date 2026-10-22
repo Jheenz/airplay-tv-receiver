@@ -68,7 +68,9 @@
     <string name="scale_hundred_percent">100%</string>
 
     <!-- Dialogs -->
-    <string name="dialog_pin_title">AirPlay PIN</string>
+    <string name="dialog_pin_title">AirPlay Passcode</string>
+    <string name="airplay_passcode_instruction">Enter this code on your iPhone, iPad, or Mac</string>
+    <string name="airplay_passcode_digits">AirPlay passcode: %1$s</string>
     <string name="btn_ok">OK</string>
 
     <!-- Logs screen -->

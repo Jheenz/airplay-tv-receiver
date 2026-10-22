@@ -52,7 +52,7 @@ import io.github.jqssun.airplay.viewmodel.LocalNetworkAccess
 import io.github.jqssun.airplay.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
 
-private val AirPlayBackground = Color(0xFF181B1B)
+private val AirPlayBackground = Color.Black
 internal val AirPlayPanel = Color(0xFF363838)
 
 @Composable
@@ -155,7 +155,7 @@ internal fun AirPlayHomeScreen(viewModel: MainViewModel, onSettings: () -> Unit)
     LaunchedEffect(Unit) { settingsFocus.requestFocusUntilLanded() }
     AirPlayColumns(backgroundColor = Color.Black, illustration = {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("AirPlay", color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Light)
+            Text("AirPlay", color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(24.dp))
             Text(stringResource(R.string.airplay_share), color = Color.White, fontSize = 20.sp,
                 textAlign = TextAlign.Center, fontWeight = FontWeight.Medium)
@@ -196,7 +196,7 @@ internal fun AirPlayHomeScreen(viewModel: MainViewModel, onSettings: () -> Unit)
         }
         AirPlayMenuRow(stringResource(R.string.airplay_settings), onClick = onSettings,
             modifier = Modifier.focusRequester(settingsFocus))
-        Text(stringResource(R.string.airplay_network_help), color = Color(0xFFB9BBBB),
+        Text(stringResource(R.string.airplay_network_help), color = Color.White.copy(alpha = 0.5f),
             fontSize = 16.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
     }
 }

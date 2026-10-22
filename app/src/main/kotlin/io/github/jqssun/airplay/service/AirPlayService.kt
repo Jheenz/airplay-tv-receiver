@@ -543,6 +543,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             NativeBridge.nativeDestroy(nativeHandle)
             nativeHandle = 0L
         }
+        clearPin()
         dacpController?.reset()
         usbAdvertiser?.stop()
         usbAdvertiser = null
@@ -843,10 +844,13 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onDisplayPin(pin: String) {
-        if (_lastPin == pin) return
         _lastPin = pin
         pinCallback?.invoke(pin)
         _updateMediaNotification()
+        // A sender needs this screen to finish pairing, even when ordinary
+        // connections are configured to leave the receiver in the background.
+        // Repeated requests can reuse the PIN after the user dismissed it.
+        launchMainActivity()
     }
 
     override fun onMetadata(data: ByteArray) {

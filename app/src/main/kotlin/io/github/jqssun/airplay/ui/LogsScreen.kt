@@ -18,11 +18,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -40,8 +42,13 @@ fun LogsScreen(viewModel: MainViewModel) {
     }
 
     Scaffold(
+        containerColor = Color.Black,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Black,
+                    scrolledContainerColor = Color.Black
+                ),
                 title = { Text(stringResource(R.string.tab_logs)) },
                 actions = {
                     IconButton(onClick = viewModel::exportLogs, modifier = Modifier.dpadFocus()) {

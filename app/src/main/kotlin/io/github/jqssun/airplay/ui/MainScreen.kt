@@ -563,21 +563,7 @@ fun MainScreen(
 
     // pin dialog
     if (pin != null) {
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissPin() },
-            title = { Text(stringResource(R.string.dialog_pin_title)) },
-            text = {
-                Text(
-                    text = pin!!,
-                    style = MaterialTheme.typography.displayMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { viewModel.dismissPin() }) { Text(stringResource(R.string.btn_ok)) }
-            }
-        )
+        AirPlayPasscodeDialog(pin = pin!!, onDismiss = { viewModel.dismissPin() })
     }
 
 }

@@ -1,6 +1,5 @@
 package io.github.jqssun.airplay.ui
 
-import android.graphics.Bitmap
 import androidx.annotation.OptIn
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -35,7 +34,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -58,9 +56,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import io.github.jqssun.airplay.R
 import io.github.jqssun.airplay.viewmodel.MainViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 
 @Composable
 @OptIn(UnstableApi::class)
@@ -71,11 +67,6 @@ internal fun AudioNowPlayingScreen(
 ) {
     val track by viewModel.trackInfo.collectAsState()
     val artwork = track.coverArt
-    val background by produceState<Bitmap?>(null, artwork) {
-        // Keep the displayed blur while preparing a replacement or awaiting artwork.
-        // Senders may resend the cover on pause/resume; never flash the fallback background.
-        if (artwork != null) value = withContext(Dispatchers.Default) { blurArtwork(artwork) }
-    }
     val player = viewModel.dacpPlayer
     var playing by remember(player) { mutableStateOf(player?.playWhenReady == true) }
     DisposableEffect(player) {
@@ -116,13 +107,7 @@ internal fun AudioNowPlayingScreen(
         else if (player != null) playFocus.requestFocusUntilLanded()
     }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF22262B))) {
-        background?.let {
-            Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        }
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
-            Color.Black.copy(alpha = 0.28f), Color.Black.copy(alpha = 0.36f), Color.Black.copy(alpha = 0.72f)
-        ))))
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 40.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -302,27 +287,4 @@ private fun AudioProgress(player: Player) {
                 color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
         }
     }
-}
-
-/** Small box blur, prepared off the UI thread, including on pre-Android 12 TVs. */
-private fun blurArtwork(artwork: Bitmap): Bitmap {
-    val size = 32
-    val small = Bitmap.createScaledBitmap(artwork, size, size, true)
-    var pixels = IntArray(size * size)
-    small.getPixels(pixels, 0, size, 0, 0, size, size)
-    repeat(3) {
-        val result = IntArray(pixels.size)
-        for (y in 0 until size) for (x in 0 until size) {
-            var red = 0; var green = 0; var blue = 0
-            for (dy in -2..2) for (dx in -2..2) {
-                val color = pixels[(y + dy).coerceIn(0, size - 1) * size + (x + dx).coerceIn(0, size - 1)]
-                red += (color ushr 16) and 255
-                green += (color ushr 8) and 255
-                blue += color and 255
-            }
-            result[y * size + x] = android.graphics.Color.rgb(red / 25, green / 25, blue / 25)
-        }
-        pixels = result
-    }
-    return Bitmap.createScaledBitmap(Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888), 256, 256, true)
 }

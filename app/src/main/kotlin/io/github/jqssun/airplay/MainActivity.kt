@@ -185,6 +185,7 @@ class MainActivity : ComponentActivity() {
 
     private fun _shouldAutoPip(): Boolean =
         viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
+            viewModel.pinCode.value == null &&
             viewModel.connectionCount.value > 0
 
     override fun onUserLeaveHint() {
