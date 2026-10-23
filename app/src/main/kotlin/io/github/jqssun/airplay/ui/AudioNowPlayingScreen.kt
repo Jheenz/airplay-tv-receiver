@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
@@ -48,6 +47,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
@@ -134,7 +134,7 @@ internal fun AudioNowPlayingScreen(
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         ArtworkCrossfade(
-            artwork = background, durationMillis = 800,
+            artwork = background, durationMillis = 1500,
             modifier = Modifier.fillMaxSize(), label = "artworkBackgroundCrossfade"
         ) { bitmap ->
             if (bitmap != null) {
@@ -173,8 +173,12 @@ internal fun AudioNowPlayingScreen(
                                 Image(cover.asImageBitmap(), stringResource(R.string.cd_cover_art),
                                     Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                             } else {
-                                Icon(Icons.Default.MusicNote, null, tint = Color.White.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(80.dp))
+                                Image(
+                                    painter = painterResource(R.drawable.album_art_placeholder),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
                             }
                         }
                     }
