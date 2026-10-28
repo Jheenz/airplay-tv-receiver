@@ -6,7 +6,7 @@ This project is a fork of **[android-airplay-server](https://github.com/jqssun/a
 
 ## Screenshots
 
-Captured from the app running on Mi TV and TCL Smart TV devices. The Now Playing and settings screenshots show the updated TCL TV interface. The receiver name and network information depend on your device; album artwork and track details come from the audio sender.
+Captured from the app running on a TCL Smart TV. The receiver name and network information depend on your device; album artwork and track details come from the audio sender.
 
 | Home | Now Playing |
 | --- | --- |
