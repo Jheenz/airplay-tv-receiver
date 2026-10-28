@@ -448,6 +448,9 @@ fun handlePlayerKeyEvent(
     showControls: () -> Unit,
     unlockControls: () -> Unit,
     onDpadSeek: (deltaMs: Long) -> Unit,
+    tvPlaybackFocused: Boolean? = null,
+    focusTvActions: () -> Unit = {},
+    focusTvPlayback: () -> Unit = {},
 ): Boolean {
     if (keyEvent.type != KeyEventType.KeyDown) return false
     if (controlsLocked) {
@@ -460,6 +463,41 @@ fun handlePlayerKeyEvent(
                 showControls()
                 false
             }
+        }
+    }
+
+    // TV playback itself owns OK and seeking; Up explicitly enters the action row.
+    // Once an action has focus, leave OK/Left/Right to normal button navigation.
+    if (tvPlaybackFocused != null) {
+        val playbackOwnsKey = tvPlaybackFocused || !controlsVisible
+        when (keyEvent.key) {
+            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                if (!playbackOwnsKey) return false
+                if (keyEvent.nativeKeyEvent.repeatCount == 0) {
+                    viewModel.toggleVideoPlayPause()
+                    showControls()
+                }
+                return true
+            }
+            Key.DirectionLeft, Key.DirectionRight -> {
+                showControls()
+                if (!playbackOwnsKey) return false
+                val deltaMs = if (keyEvent.key == Key.DirectionLeft) -seekIncrementMs else seekIncrementMs
+                viewModel.seekVideoBy(deltaMs)
+                onDpadSeek(deltaMs)
+                return true
+            }
+            Key.DirectionUp -> {
+                showControls()
+                if (playbackOwnsKey) focusTvActions()
+                return playbackOwnsKey
+            }
+            Key.DirectionDown -> {
+                showControls()
+                focusTvPlayback()
+                return true
+            }
+            else -> Unit
         }
     }
 

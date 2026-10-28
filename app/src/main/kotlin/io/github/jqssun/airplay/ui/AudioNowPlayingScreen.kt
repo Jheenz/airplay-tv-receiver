@@ -3,8 +3,10 @@ package io.github.jqssun.airplay.ui
 import android.graphics.Bitmap
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -15,6 +17,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -25,19 +28,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.rounded.FastForward
-import androidx.compose.material.icons.rounded.FastRewind
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
@@ -45,6 +50,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
@@ -94,10 +100,12 @@ internal fun AudioNowPlayingScreen(
     val background = preparedArtwork?.background
     val player = viewModel.dacpPlayer
     var playing by remember(player) { mutableStateOf(player?.playWhenReady == true) }
+    var commands by remember(player) { mutableStateOf(player?.availableCommands ?: Player.Commands.EMPTY) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
                 playing = player.playWhenReady
+                commands = player.availableCommands
             }
         }
         player?.addListener(listener)
@@ -115,6 +123,15 @@ internal fun AudioNowPlayingScreen(
     }
     val loading = isConnecting || player == null ||
         (!metadataWaitExpired && (artwork == null || track.title.isBlank()))
+    var timelineVisible by remember(player) { mutableStateOf(true) }
+    var timelineRevealTick by remember(player) { mutableIntStateOf(0) }
+    LaunchedEffect(player, playing, loading, timelineRevealTick) {
+        timelineVisible = true
+        if (playing && !loading) {
+            delay(5000)
+            timelineVisible = false
+        }
+    }
     val artworkScale by animateFloatAsState(
         targetValue = if (loading || playing) 1f else 0.85f,
         animationSpec = tween(350), label = "artworkPlaybackScale"
@@ -125,14 +142,65 @@ internal fun AudioNowPlayingScreen(
             infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "playerSkeletonAlpha")
         alpha
     } else 0f
-    val playFocus = remember { FocusRequester() }
+    val playbackFocus = remember { FocusRequester() }
     val settingsFocus = remember { FocusRequester() }
-    LaunchedEffect(player, loading) {
-        if (loading) settingsFocus.requestFocusUntilLanded()
-        else if (player != null) playFocus.requestFocusUntilLanded()
+    var playbackFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(player) {
+        playbackFocus.requestFocusUntilLanded()
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(Color.Black)
+        .focusRequester(playbackFocus)
+        .onFocusChanged { playbackFocused = it.isFocused }
+        .focusable()
+        .onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (event.key) {
+                Key.DirectionDown -> {
+                    timelineVisible = true
+                    timelineRevealTick++
+                    playbackFocus.requestFocus()
+                    true
+                }
+                Key.DirectionUp -> {
+                    if (!playbackFocused) return@onPreviewKeyEvent false
+                    settingsFocus.requestFocus()
+                    true
+                }
+                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                    if (!playbackFocused) return@onPreviewKeyEvent false
+                    if (event.nativeKeyEvent.repeatCount == 0 && commands.contains(Player.COMMAND_PLAY_PAUSE)) {
+                        if (player?.playWhenReady == true) player.pause() else player?.play()
+                    }
+                    true
+                }
+                Key.MediaPlayPause, Key.Spacebar, Key.MediaPlay, Key.MediaPause -> {
+                    if (event.nativeKeyEvent.repeatCount == 0 && commands.contains(Player.COMMAND_PLAY_PAUSE)) {
+                        when (event.key) {
+                            Key.MediaPlay -> player?.play()
+                            Key.MediaPause -> player?.pause()
+                            else -> if (player?.playWhenReady == true) player.pause() else player?.play()
+                        }
+                    }
+                    true
+                }
+                Key.DirectionLeft, Key.MediaPrevious -> {
+                    if (event.key == Key.DirectionLeft && !playbackFocused) return@onPreviewKeyEvent false
+                    if (event.nativeKeyEvent.repeatCount == 0 && commands.contains(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)) {
+                        player?.seekToPreviousMediaItem()
+                    }
+                    true
+                }
+                Key.DirectionRight, Key.MediaNext -> {
+                    if (event.key == Key.DirectionRight && !playbackFocused) return@onPreviewKeyEvent false
+                    if (event.nativeKeyEvent.repeatCount == 0 && commands.contains(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)) {
+                        player?.seekToNextMediaItem()
+                    }
+                    true
+                }
+                else -> false
+            }
+        }) {
         ArtworkCrossfade(
             artwork = background, durationMillis = 1500,
             modifier = Modifier.fillMaxSize(), label = "artworkBackgroundCrossfade"
@@ -146,20 +214,23 @@ internal fun AudioNowPlayingScreen(
             Color.Black.copy(alpha = 0.5f),
             Color.Black.copy(alpha = 0.8f)
         ))))
-        Column(
+        Box(
             Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 40.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            contentAlignment = Alignment.Center
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 AudioControlButton(
                     icon = Icons.Default.Settings, label = stringResource(R.string.airplay_settings),
                     onClick = onSettings, size = 48.dp, iconSize = 24.dp,
                     modifier = Modifier.focusRequester(settingsFocus)
                 )
             }
-            Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+            // Equal top/bottom clearance centers artwork and metadata as one group,
+            // independently of the settings shortcut and the bottom timeline.
+            Column(Modifier.fillMaxSize().padding(vertical = 64.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center) {
-                Box(Modifier.weight(1f, fill = false).widthIn(max = 440.dp).aspectRatio(1f)
+                // Native TCL AirPlay uses a 540px cover at the TV's 2x density.
+                Box(Modifier.weight(1f, fill = false).widthIn(max = 270.dp).aspectRatio(1f)
                     .graphicsLayer { scaleX = artworkScale; scaleY = artworkScale }
                     .shadow(24.dp, RoundedCornerShape(8.dp))
                     .clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.12f)),
@@ -192,33 +263,29 @@ internal fun AudioNowPlayingScreen(
                     PlayerSkeleton(150.dp, 24.dp, skeletonAlpha, Modifier.padding(bottom = 4.dp))
                 } else {
                     Text(track.title.ifEmpty { stringResource(R.string.unknown_track) }, color = Color.White,
-                        fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                        fontSize = 22.sp, lineHeight = 28.sp, maxLines = 1,
                         overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                     if (track.artist.isNotEmpty()) Text(track.artist, color = Color.White.copy(alpha = 0.5f),
                         fontSize = 14.sp, lineHeight = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 4.dp))
                 }
             }
-            Spacer(Modifier.height(20.dp))
-            if (loading) {
-                Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    PlayerSkeleton(48.dp, 48.dp, skeletonAlpha, round = true)
-                    PlayerSkeleton(52.dp, 52.dp, skeletonAlpha, round = true)
-                    PlayerSkeleton(48.dp, 48.dp, skeletonAlpha, round = true)
-                }
-                Column(Modifier.widthIn(max = 1000.dp).fillMaxWidth()) {
-                    Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
-                        Box(Modifier.fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = skeletonAlpha), CircleShape))
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                AnimatedVisibility(visible = timelineVisible, enter = fadeIn(tween(180)), exit = fadeOut(tween(180))) {
+                    if (loading) {
+                        Column(Modifier.widthIn(max = 1000.dp).fillMaxWidth()) {
+                            Box(Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.Center) {
+                                Box(Modifier.fillMaxWidth().height(7.dp).background(Color.White.copy(alpha = skeletonAlpha), CircleShape))
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                PlayerSkeleton(40.dp, 16.dp, skeletonAlpha)
+                                PlayerSkeleton(40.dp, 16.dp, skeletonAlpha)
+                            }
+                        }
+                    } else {
+                        AudioProgress(player, playing)
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        PlayerSkeleton(40.dp, 16.dp, skeletonAlpha)
-                        PlayerSkeleton(40.dp, 16.dp, skeletonAlpha)
-                    }
                 }
-            } else if (player != null) {
-                AudioTransportControls(player, playFocus, playing)
-                AudioProgress(player)
             }
         }
     }
@@ -303,43 +370,11 @@ private fun AudioControlButton(
     }
 }
 
-@Composable
-private fun AudioTransportControls(player: Player, playFocus: FocusRequester, playing: Boolean) {
-    var commands by remember(player) { mutableStateOf(player.availableCommands) }
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onEvents(player: Player, events: Player.Events) {
-                commands = player.availableCommands
-            }
-        }
-        player.addListener(listener)
-        onDispose { player.removeListener(listener) }
-    }
-    Row(
-        Modifier.padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically
-    ) {
-        AudioControlButton(Icons.Rounded.FastRewind, stringResource(R.string.audio_previous_track),
-            onClick = { player.seekToPreviousMediaItem() }, size = 48.dp, iconSize = 26.dp,
-            enabled = commands.contains(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM))
-        AudioControlButton(
-            if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-            stringResource(if (playing) R.string.audio_pause else R.string.audio_play),
-            onClick = { if (player.playWhenReady) player.pause() else player.play() },
-            modifier = Modifier.focusRequester(playFocus), size = 52.dp, iconSize = 30.dp, prominent = true,
-            enabled = commands.contains(Player.COMMAND_PLAY_PAUSE)
-        )
-        AudioControlButton(Icons.Rounded.FastForward, stringResource(R.string.audio_next_track),
-            onClick = { player.seekToNextMediaItem() }, size = 48.dp, iconSize = 26.dp,
-            enabled = commands.contains(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM))
-    }
-}
-
 /** Read-only sender progress: no focus target, pointer actions, or remote seek commands. */
 @Composable
-private fun AudioProgress(player: Player) {
-    var position by remember(player) { mutableLongStateOf(0) }
-    var duration by remember(player) { mutableLongStateOf(0) }
+private fun AudioProgress(player: Player, playing: Boolean) {
+    var position by remember(player) { mutableLongStateOf(player.currentPosition.coerceAtLeast(0)) }
+    var duration by remember(player) { mutableLongStateOf(player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0) }
     LaunchedEffect(player) {
         while (true) {
             position = player.currentPosition.coerceAtLeast(0)
@@ -349,22 +384,18 @@ private fun AudioProgress(player: Player) {
     }
     val fraction = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
     val progressLabel = stringResource(R.string.audio_playback_position)
-    Column(Modifier.widthIn(max = 1000.dp).fillMaxWidth()) {
-        Box(
-            Modifier.fillMaxWidth().height(48.dp).semantics {
-                contentDescription = progressLabel
-                progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
-            },
-            contentAlignment = Alignment.Center
-        ) {
-            Box(Modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f))) {
-                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(Color.White.copy(alpha = 0.9f)))
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Column(Modifier.widthIn(max = 1000.dp).fillMaxWidth()) {
+            Box(
+                Modifier.fillMaxWidth().height(20.dp).semantics {
+                    contentDescription = progressLabel
+                    progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
+                },
+                contentAlignment = Alignment.Center
+            ) {
+                PlaybackProgressTrack(fraction)
             }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatVideoTime(position), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
-            Text(if (duration > 0) "−${formatVideoTime((duration - position).coerceAtLeast(0))}" else "--:--",
-                color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+            PlaybackTimestamps(position, duration, playing)
         }
     }
 }

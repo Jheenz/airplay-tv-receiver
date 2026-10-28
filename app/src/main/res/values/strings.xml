@@ -57,6 +57,11 @@
     <string name="skip_silence">Skip silence</string>
 
     <!-- Player controls -->
+    <string name="video_player_options">Playback options</string>
+    <string name="video_seek">Seek video</string>
+    <string name="video_paused">Paused</string>
+    <string name="video_rewind_ten">Rewind 10 seconds</string>
+    <string name="video_forward_ten">Forward 10 seconds</string>
     <string name="cd_back">Back</string>
     <string name="cd_copy_url">Copy video URL</string>
     <string name="cd_rotate">Rotate screen</string>

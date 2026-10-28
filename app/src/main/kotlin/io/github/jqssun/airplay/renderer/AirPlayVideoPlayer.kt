@@ -37,7 +37,7 @@ class AirPlayVideoPlayer(private val context: Context) {
 
     var onPlaybackInfo: ((PlaybackSnapshot) -> Unit)? = null
     var onVideoSize: ((width: Int, height: Int, aspect: Float) -> Unit)? = null
-    var onTitle: ((String?) -> Unit)? = null
+    var onMetadata: ((MediaMetadata) -> Unit)? = null
     var onEnded: (() -> Unit)? = null
 
     private val _reportTick = object : Runnable {
@@ -60,7 +60,7 @@ class AirPlayVideoPlayer(private val context: Context) {
             _reportPlaybackInfo()
         }
         override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
-            onTitle?.invoke(mediaMetadata.title?.toString())
+            onMetadata?.invoke(mediaMetadata)
         }
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             if (videoSize.height == 0) return

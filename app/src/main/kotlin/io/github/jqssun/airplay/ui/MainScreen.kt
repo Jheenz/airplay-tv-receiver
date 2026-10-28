@@ -171,8 +171,10 @@ fun MainScreen(
         val downloadProgress by viewModel.videoDownloadProgress.collectAsState()
         val scrubbing = scrubPositionMs != null
         val downloading = downloadProgress != null
+        val tvPlayer = isTv()
+        var tvOptionsOpen by remember { mutableStateOf(false) }
         var overlayVisible by remember { mutableStateOf(false) }
-        LaunchedEffect(overlayTick, playing, scrubbing, downloading, videoPlaybackActive) {
+        LaunchedEffect(overlayTick, playing, scrubbing, downloading, videoPlaybackActive, tvOptionsOpen) {
             // tick 0 = fresh session; a pending session or a running download pins the overlay
             if (!videoPlaybackActive) {
                 overlayVisible = true
@@ -180,7 +182,7 @@ fun MainScreen(
                 overlayVisible = false
             } else {
                 overlayVisible = true
-                if (playing && !scrubbing && !downloading) {
+                if (playing && !scrubbing && !downloading && !tvOptionsOpen) {
                     delay(VIDEO_OVERLAY_HIDE_MS)
                     overlayVisible = false
                 }
@@ -221,6 +223,7 @@ fun MainScreen(
         val videoPlaybackSize by viewModel.videoPlaybackSize.collectAsState()
         val buffering by viewModel.videoBuffering.collectAsState()
         val videoTitle by viewModel.videoTitle.collectAsState()
+        val videoAuthor by viewModel.videoAuthor.collectAsState()
         val videoLocation by viewModel.videoLocation.collectAsState()
         val speed by viewModel.videoSpeed.collectAsState()
         val isPipSupported = remember {
@@ -232,21 +235,31 @@ fun MainScreen(
         val rootFocusRequester = remember { FocusRequester() }
         val playPauseFocusRequester = remember { FocusRequester() }
         val unlockFocusRequester = remember { FocusRequester() }
+        val tvActionsFocusRequester = remember { FocusRequester() }
+        var tvActionsRequested by remember { mutableStateOf(false) }
+        var isPlaybackFocused by remember { mutableStateOf(false) }
         var isPlayPauseFocused by remember { mutableStateOf(false) }
         var isUnlockFocused by remember { mutableStateOf(false) }
-        LaunchedEffect(overlayVisible, controlsLocked, showSpeedSelector) {
-            if (showSpeedSelector) return@LaunchedEffect
+        LaunchedEffect(overlayVisible, controlsLocked, showSpeedSelector, tvOptionsOpen, tvActionsRequested) {
+            if (showSpeedSelector || tvOptionsOpen) return@LaunchedEffect
             if (!overlayVisible) {
+                tvActionsRequested = false
                 runCatching { rootFocusRequester.requestFocus() }
                 return@LaunchedEffect
             }
             val locked = controlsLocked
+            if (tvPlayer && !locked) {
+                val target = if (tvActionsRequested) tvActionsFocusRequester else rootFocusRequester
+                target.requestFocusUntilLanded(attempts = 20)
+                return@LaunchedEffect
+            }
             val target = if (locked) unlockFocusRequester else playPauseFocusRequester
             target.requestFocusUntilLanded(attempts = 20) { if (locked) isUnlockFocused else isPlayPauseFocused }
         }
 
         // dpad seeking (controls hidden): accumulate the skipped amount and briefly show it
         var dpadSeekOffsetMs by remember { mutableLongStateOf(0L) }
+        var dpadSeekDirection by remember { mutableIntStateOf(0) }
         var dpadSeekTargetMs by remember { mutableLongStateOf(0L) }
         var dpadSeekActive by remember { mutableStateOf(false) }
         var dpadSeekTick by remember { mutableIntStateOf(0) }
@@ -256,6 +269,7 @@ fun MainScreen(
             dpadSeekActive = false
         }
         val showDpadSeekFeedback: (Long) -> Unit = { deltaMs ->
+            dpadSeekDirection = deltaMs.compareTo(0L)
             if (!dpadSeekActive) dpadSeekOffsetMs = 0L
             dpadSeekOffsetMs += deltaMs
             dpadSeekTargetMs = (dpadSeekTargetMs.takeIf { dpadSeekActive } ?: positionMs).plus(deltaMs)
@@ -269,9 +283,10 @@ fun MainScreen(
                 .fillMaxSize()
                 .background(Color.Black)
                 .focusRequester(rootFocusRequester)
+                .onFocusChanged { isPlaybackFocused = it.isFocused }
                 .focusable()
                 .onPreviewKeyEvent { keyEvent ->
-                    if (showSpeedSelector) {
+                    if (showSpeedSelector || tvOptionsOpen) {
                         false
                     } else {
                         handlePlayerKeyEvent(
@@ -287,6 +302,12 @@ fun MainScreen(
                                 viewModel.showVideoOverlay()
                             },
                             onDpadSeek = showDpadSeekFeedback,
+                            tvPlaybackFocused = if (tvPlayer) isPlaybackFocused else null,
+                            focusTvActions = { tvActionsRequested = true },
+                            focusTvPlayback = {
+                                tvActionsRequested = false
+                                rootFocusRequester.requestFocus()
+                            },
                         )
                     }
                 },
@@ -323,7 +344,10 @@ fun MainScreen(
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut()
             ) {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
+                Box(modifier = Modifier.fillMaxSize().background(
+                    if (tvPlayer) Brush.verticalGradient(0f to Color.Transparent, 0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.85f))
+                    else Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.3f), Color.Black.copy(alpha = 0.3f)))
+                ))
             }
             if (buffering) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center).size(72.dp))
@@ -345,7 +369,7 @@ fun MainScreen(
                     modifier = Modifier.align(Alignment.Center)
                 )
                 else -> androidx.compose.animation.AnimatedVisibility(
-                    visible = overlayVisible && videoPlaybackActive && !controlsLocked,
+                    visible = !tvPlayer && overlayVisible && videoPlaybackActive && !controlsLocked,
                     enter = androidx.compose.animation.fadeIn(),
                     exit = androidx.compose.animation.fadeOut(),
                     modifier = Modifier.align(Alignment.Center)
@@ -360,7 +384,7 @@ fun MainScreen(
                 }
             }
             DpadSeekIndicator(
-                visible = dpadSeekActive && dpadSeekOffsetMs != 0L,
+                visible = !tvPlayer && dpadSeekActive && dpadSeekOffsetMs != 0L,
                 offsetMs = dpadSeekOffsetMs,
                 positionMs = dpadSeekTargetMs
             )
@@ -401,7 +425,7 @@ fun MainScreen(
                 }
             } else {
                 androidx.compose.animation.AnimatedVisibility(
-                    visible = overlayVisible,
+                    visible = overlayVisible && !tvPlayer,
                     enter = androidx.compose.animation.fadeIn(),
                     exit = androidx.compose.animation.fadeOut(),
                     modifier = Modifier.align(Alignment.TopCenter)
@@ -425,45 +449,71 @@ fun MainScreen(
                     exit = androidx.compose.animation.fadeOut(),
                     modifier = Modifier.align(Alignment.BottomCenter)
                 ) {
-                    VideoControlsBottom(
-                        positionMs = scrubPositionMs ?: positionMs,
-                        durationMs = durationMs,
-                        contentScale = zoomState.contentScale,
-                        isPipSupported = isPipSupported,
-                        onRotateClick = {
-                            activity?.let {
-                                it.requestedOrientation =
-                                    if (it.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                                    } else {
-                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                                    }
-                            }
-                        },
-                        onLockClick = {
-                            viewModel.showVideoOverlay()
-                            controlsLocked = true
-                        },
-                        onContentScaleClick = {
-                            viewModel.showVideoOverlay()
-                            zoomState.switchToNextContentScale()
-                        },
-                        onPipClick = onPip,
-                        onSeek = { seekGestureState.onSeek(it) },
-                        onSeekEnd = { seekGestureState.onSeekEnd() },
-                        seekBarModifier = Modifier
-                            .focusProperties { up = playPauseFocusRequester }
-                            .dpadAdjust(
-                                onLeft = {
-                                    viewModel.seekVideoBy(-TapGestureState.SEEK_INCREMENT_MS)
-                                    viewModel.showVideoOverlay()
-                                },
-                                onRight = {
-                                    viewModel.seekVideoBy(TapGestureState.SEEK_INCREMENT_MS)
-                                    viewModel.showVideoOverlay()
+                    if (tvPlayer) {
+                        val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                        TvVideoControls(
+                            title = videoTitle,
+                            author = videoAuthor,
+                            playing = playing,
+                            skipDirection = if (dpadSeekActive) dpadSeekDirection else 0,
+                            positionMs = scrubPositionMs ?: positionMs,
+                            durationMs = durationMs,
+                            contentScale = zoomState.contentScale,
+                            optionsOpen = tvOptionsOpen,
+                            onOptionsOpenChange = { tvOptionsOpen = it; viewModel.showVideoOverlay() },
+                            onContentScale = { zoomState.switchToNextContentScale(); viewModel.showVideoOverlay() },
+                            onSpeed = { overlayVisible = false; showSpeedSelector = true },
+                            onLock = { controlsLocked = true; viewModel.showVideoOverlay() },
+                            onPip = if (isPipSupported) onPip else null,
+                            downloadLabel = if (durationMs > 0) stringResource(if (downloading) R.string.cd_cancel_download else R.string.cd_download) +
+                                (downloadProgress?.let { if (it >= 0) " ($it%)" else " (…)" } ?: "") else null,
+                            onDownload = { viewModel.toggleVideoDownload() },
+                            onCopyUrl = videoLocation?.let { url -> { clipboard.setText(androidx.compose.ui.text.AnnotatedString(url)) } },
+                            onSeek = { seekGestureState.onSeek(it) },
+                            onSeekEnd = { seekGestureState.onSeekEnd() },
+                            actionsModifier = Modifier.focusRequester(tvActionsFocusRequester),
+                        )
+                    } else {
+                        VideoControlsBottom(
+                            positionMs = scrubPositionMs ?: positionMs,
+                            durationMs = durationMs,
+                            contentScale = zoomState.contentScale,
+                            isPipSupported = isPipSupported,
+                            onRotateClick = {
+                                activity?.let {
+                                    it.requestedOrientation =
+                                        if (it.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                                        } else {
+                                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                        }
                                 }
-                            )
-                    )
+                            },
+                            onLockClick = {
+                                viewModel.showVideoOverlay()
+                                controlsLocked = true
+                            },
+                            onContentScaleClick = {
+                                viewModel.showVideoOverlay()
+                                zoomState.switchToNextContentScale()
+                            },
+                            onPipClick = onPip,
+                            onSeek = { seekGestureState.onSeek(it) },
+                            onSeekEnd = { seekGestureState.onSeekEnd() },
+                            seekBarModifier = Modifier
+                                .focusProperties { up = playPauseFocusRequester }
+                                .dpadAdjust(
+                                    onLeft = {
+                                        viewModel.seekVideoBy(-TapGestureState.SEEK_INCREMENT_MS)
+                                        viewModel.showVideoOverlay()
+                                    },
+                                    onRight = {
+                                        viewModel.seekVideoBy(TapGestureState.SEEK_INCREMENT_MS)
+                                        viewModel.showVideoOverlay()
+                                    }
+                                )
+                        )
+                    }
                 }
             }
             val skipSilence by viewModel.videoSkipSilence.collectAsState()

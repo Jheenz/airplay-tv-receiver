@@ -132,6 +132,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     // container/manifest metadata
     private val _videoTitle = MutableStateFlow("")
     val videoTitle = _videoTitle.asStateFlow()
+    private val _videoAuthor = MutableStateFlow("")
+    val videoAuthor = _videoAuthor.asStateFlow()
 
     // recent /playback-info polls with no playback = pending video; polls start ~1s before /play
     @Volatile private var _lastVideoPollAt = 0L
@@ -314,7 +316,13 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _videoPlaybackAspect.value = aspect
             _videoPlaybackSize.value = width to height
         }
-        airPlayVideoPlayer.onTitle = { _videoTitle.value = it ?: "" }
+        airPlayVideoPlayer.onMetadata = { metadata ->
+            _videoTitle.value = metadata.title?.toString().orEmpty().ifBlank {
+                metadata.displayTitle?.toString().orEmpty()
+            }
+            _videoAuthor.value = metadata.artist?.toString().orEmpty()
+            log("Video metadata: title present=${_videoTitle.value.isNotBlank()}, author present=${_videoAuthor.value.isNotBlank()}")
+        }
         airPlayVideoPlayer.onEnded = { _endVideoPlayback("AirPlay Video stopped (player)") }
         airPlayVideoPlayer.onPlaybackInfo = { snapshot ->
             if (nativeHandle != 0L) {
@@ -665,6 +673,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _videoPlaybackAspect.value = 16f / 9f
         _videoPlaybackSize.value = null
         _videoTitle.value = ""
+        _videoAuthor.value = ""
         _videoPlaybackActive.value = true
         airPlayVideoPlayer.play(location, startPositionSeconds)
         // claim media-button routing for keys that arrive as media-session events

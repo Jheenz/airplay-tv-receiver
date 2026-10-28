@@ -10,7 +10,7 @@ Captured from the app running on a Mi TV. The receiver name and network informat
 
 | Home | Now Playing |
 | --- | --- |
-| ![AirPlay home screen with network and device information](docs/screenshots/home.png) | ![Audio streaming with album artwork, a blurred background, playback controls, and elapsed time](docs/screenshots/now-playing.png) |
+| ![AirPlay home screen with network and device information](docs/screenshots/home.png) | ![Audio streaming with centered album artwork and track details, a blurred background, and a moving elapsed timestamp](docs/screenshots/now-playing.png) |
 
 | AirPlay settings | Advanced settings |
 | --- | --- |
@@ -24,7 +24,7 @@ Captured from the app running on a Mi TV. The receiver name and network informat
 - Now Playing screen with centered album art, track information, and a stable blurred-artwork background.
 - Smooth artwork and blurred-background crossfades when the cover changes, with a separate pause/shrink animation.
 - Full-screen AirPlay passcode tiles that bring the app forward when a sender requests a PIN.
-- Play/pause, previous, and next controls with filled focus highlights instead of outlines.
+- Audio playback controlled directly by the remote: OK for play/pause, Left/Right for previous/next track.
 - A display-only audio timeline showing elapsed and remaining time. Audio scrubbing is disabled.
 - Pause-state synchronization that freezes the timer and prevents late metadata from restarting the paused UI.
 - Logs accessible from AirPlay settings.
@@ -63,6 +63,18 @@ The fork retains the upstream receiver capabilities:
 4. Select the displayed receiver name from **Screen Mirroring** or your audio app's **AirPlay** output picker.
 
 Use the remote's directional buttons to navigate and OK to activate a control. Back closes a dialog or returns to the previous screen.
+
+During video playback on TV, OK toggles play/pause and Left/Right seek backward/forward by 10 seconds. Up focuses the playback action buttons; Down returns to playback. The small pause symbol beside the elapsed time is a status indicator and cannot receive focus.
+
+On the audio Now Playing screen, OK toggles play/pause and Left/Right select the previous/next track. Up focuses Settings; Down returns to playback. The timeline uses the same moving elapsed timestamp and pause indicator as video, with seeking disabled and no skip indicators or transport buttons.
+
+The audio timeline hides after five seconds of playback. Pausing keeps it visible; Down reveals it again and restarts the five-second timer while playing.
+
+The elapsed timestamp follows the playhead, with its seconds colon centered beneath the marker. The remaining-time label hides as the elapsed timestamp approaches it near the end, and returns when there is enough space.
+
+Each TV remote skip shows a 10-second circular-arrow indicator for one second: rewind to the left of the elapsed time, forward to its right. Forward temporarily replaces the pause indicator when paused; repeated skips restart the one-second timer.
+
+The TV video overlay displays the title and author/artist when provided by stream metadata or the sender's audio metadata. Missing fields stay hidden; some senders provide only the video stream without these details.
 
 To enable **Open this application on connect** on Android versions that require overlay access, allow **AirPlay Server** in **Display over other apps**. Some TVs show a list of apps instead of opening an individual permission page.
 

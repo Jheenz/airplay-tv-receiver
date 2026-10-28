@@ -159,6 +159,8 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
 
     private val _videoTitle = MutableStateFlow("")
     val videoTitle: StateFlow<String> = _videoTitle.asStateFlow()
+    private val _videoAuthor = MutableStateFlow("")
+    val videoAuthor: StateFlow<String> = _videoAuthor.asStateFlow()
 
     private val _videoLocation = MutableStateFlow<String?>(null)
     val videoLocation: StateFlow<String?> = _videoLocation.asStateFlow()
@@ -410,6 +412,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
                 _videoPlaybackSize.value = it.videoPlaybackSize.value
                 // stream metadata first, dmap second; senders rarely provide either for video
                 _videoTitle.value = it.videoTitle.value.ifEmpty { it.trackInfo.value.title }
+                _videoAuthor.value = it.videoAuthor.value.ifEmpty { it.trackInfo.value.artist }
                 _videoLocation.value = it.videoLocation.value
                 // stale snapshots must not overwrite a just-made optimistic action
                 if (SystemClock.elapsedRealtime() - _videoActionAt > VIDEO_ACTION_SYNC_HOLD_MS) {
