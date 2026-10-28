@@ -13,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -55,6 +54,7 @@ internal fun PlaybackTimestamps(
     playing: Boolean,
     skipDirection: Int = 0,
     trackWidthPx: Int = 0,
+    buffering: Boolean = false,
 ) {
     val position = positionMs.coerceAtLeast(0L)
     val fraction = if (durationMs > 0) (position.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
@@ -73,20 +73,27 @@ internal fun PlaybackTimestamps(
         // The timestamp follows the playhead all the way to either end of the track.
         val playheadPx = (widthPx - trackWidth) / 2f + trackWidth * fraction
         val elapsedLeftPx = (playheadPx - colon.center.x).roundToInt()
-        val trailingIconWidthPx = with(density) { if (playing && skipDirection <= 0) 0f else (4.dp + 18.dp).toPx() }
-        val leadingIconWidthPx = with(density) { if (skipDirection < 0) (18.dp + 4.dp).roundToPx() else 0 }
+        val trailingIconWidthPx = with(density) { when {
+            skipDirection > 0 -> (4.dp + 27.dp).toPx()
+            buffering || !playing -> (4.dp + 18.dp).toPx()
+            else -> 0f
+        } }
+        val leadingIconWidthPx = with(density) { if (skipDirection < 0) (27.dp + 4.dp).roundToPx() else 0 }
         val labelRightPx = elapsedLeftPx + elapsedLayout.size.width + trailingIconWidthPx
         val countdownLeftPx = widthPx - remainingLayout.size.width
         val showCountdown = labelRightPx + with(density) { 12.dp.toPx() } <= countdownLeftPx
         Row(Modifier.offset { IntOffset(elapsedLeftPx - leadingIconWidthPx, 0) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (skipDirection < 0) {
                 Icon(Icons.Rounded.Replay10, contentDescription = stringResource(R.string.video_rewind_ten),
-                    tint = Color.White, modifier = Modifier.size(18.dp).graphicsLayer { scaleX = 1.5f; scaleY = 1.5f })
+                    tint = Color.White, modifier = Modifier.size(27.dp))
             }
             Text(elapsed, style = timestampStyle, maxLines = 1, softWrap = false)
             if (skipDirection > 0) {
                 Icon(Icons.Rounded.Forward10, contentDescription = stringResource(R.string.video_forward_ten),
-                    tint = Color.White, modifier = Modifier.size(18.dp).graphicsLayer { scaleX = 1.5f; scaleY = 1.5f })
+                    tint = Color.White, modifier = Modifier.size(27.dp))
+            }
+            else if (buffering) {
+                PlaybackLoadingIndicator(Modifier.size(18.dp))
             }
             // A paused-state marker, not a remote focus target or button.
             else if (!playing) {

@@ -26,8 +26,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -76,7 +74,6 @@ import kotlinx.coroutines.withContext
 @OptIn(UnstableApi::class)
 internal fun AudioNowPlayingScreen(
     viewModel: MainViewModel,
-    onSettings: () -> Unit,
     isConnecting: Boolean = false
 ) {
     val track by viewModel.trackInfo.collectAsState()
@@ -143,7 +140,6 @@ internal fun AudioNowPlayingScreen(
         alpha
     } else 0f
     val playbackFocus = remember { FocusRequester() }
-    val settingsFocus = remember { FocusRequester() }
     var playbackFocused by remember { mutableStateOf(false) }
     LaunchedEffect(player) {
         playbackFocus.requestFocusUntilLanded()
@@ -160,11 +156,6 @@ internal fun AudioNowPlayingScreen(
                     timelineVisible = true
                     timelineRevealTick++
                     playbackFocus.requestFocus()
-                    true
-                }
-                Key.DirectionUp -> {
-                    if (!playbackFocused) return@onPreviewKeyEvent false
-                    settingsFocus.requestFocus()
                     true
                 }
                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
@@ -218,15 +209,7 @@ internal fun AudioNowPlayingScreen(
             Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 40.dp, vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
-            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                AudioControlButton(
-                    icon = Icons.Default.Settings, label = stringResource(R.string.airplay_settings),
-                    onClick = onSettings, size = 48.dp, iconSize = 24.dp,
-                    modifier = Modifier.focusRequester(settingsFocus)
-                )
-            }
-            // Equal top/bottom clearance centers artwork and metadata as one group,
-            // independently of the settings shortcut and the bottom timeline.
+            // Equal top/bottom clearance centers artwork and metadata as one group.
             Column(Modifier.fillMaxSize().padding(vertical = 64.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center) {
                 // Native TCL AirPlay uses a 540px cover at the TV's 2x density.

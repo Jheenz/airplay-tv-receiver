@@ -169,14 +169,15 @@ fun MainScreen(
         val durationMs by viewModel.videoDurationMs.collectAsState()
         val scrubPositionMs by viewModel.videoScrubPositionMs.collectAsState()
         val downloadProgress by viewModel.videoDownloadProgress.collectAsState()
+        val buffering by viewModel.videoBuffering.collectAsState()
         val scrubbing = scrubPositionMs != null
         val downloading = downloadProgress != null
         val tvPlayer = isTv()
         var tvOptionsOpen by remember { mutableStateOf(false) }
         var overlayVisible by remember { mutableStateOf(false) }
-        LaunchedEffect(overlayTick, playing, scrubbing, downloading, videoPlaybackActive, tvOptionsOpen) {
-            // tick 0 = fresh session; a pending session or a running download pins the overlay
-            if (!videoPlaybackActive) {
+        LaunchedEffect(overlayTick, playing, scrubbing, downloading, videoPlaybackActive, tvOptionsOpen, buffering) {
+            // Keep status visible while connecting, buffering, or downloading.
+            if (!videoPlaybackActive || buffering) {
                 overlayVisible = true
             } else if (overlayTick == 0L) {
                 overlayVisible = false
@@ -221,7 +222,6 @@ fun MainScreen(
             onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
         }
         val videoPlaybackSize by viewModel.videoPlaybackSize.collectAsState()
-        val buffering by viewModel.videoBuffering.collectAsState()
         val videoTitle by viewModel.videoTitle.collectAsState()
         val videoAuthor by viewModel.videoAuthor.collectAsState()
         val videoLocation by viewModel.videoLocation.collectAsState()
@@ -349,9 +349,6 @@ fun MainScreen(
                     else Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.3f), Color.Black.copy(alpha = 0.3f)))
                 ))
             }
-            if (buffering) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center).size(72.dp))
-            }
             DoubleTapIndicator(tapGestureState = tapGestureState)
             val seekAmountMs = seekGestureState.seekAmountMs
             when {
@@ -376,6 +373,7 @@ fun MainScreen(
                 ) {
                     PlayPauseButton(
                         playing = playing,
+                        buffering = buffering,
                         onClick = { viewModel.toggleVideoPlayPause() },
                         modifier = Modifier
                             .focusRequester(playPauseFocusRequester)
@@ -455,6 +453,7 @@ fun MainScreen(
                             title = videoTitle,
                             author = videoAuthor,
                             playing = playing,
+                            buffering = buffering,
                             skipDirection = if (dpadSeekActive) dpadSeekDirection else 0,
                             positionMs = scrubPositionMs ?: positionMs,
                             durationMs = durationMs,
@@ -569,7 +568,7 @@ fun MainScreen(
             when (tab) {
                 Tab.OVERVIEW -> {
                     if ((audioOnly && connections > 0) || audioConnecting) {
-                        AudioNowPlayingScreen(viewModel, onSettings = { tab = Tab.SETTINGS }, isConnecting = audioConnecting)
+                        AudioNowPlayingScreen(viewModel, isConnecting = audioConnecting)
                     } else if (connections > 0 || mirroringActive) {
                         val settingsFocus = remember { FocusRequester() }
                         LaunchedEffect(Unit) { settingsFocus.requestFocusUntilLanded() }

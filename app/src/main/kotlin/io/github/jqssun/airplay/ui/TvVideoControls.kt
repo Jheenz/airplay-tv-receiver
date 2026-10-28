@@ -32,6 +32,7 @@ internal fun TvVideoControls(
     title: String,
     author: String,
     playing: Boolean,
+    buffering: Boolean,
     skipDirection: Int,
     positionMs: Long,
     durationMs: Long,
@@ -107,7 +108,7 @@ internal fun TvVideoControls(
                     PlaybackProgressTrack(fraction, Modifier.onSizeChanged { trackWidthPx = it.width })
                 },
             )
-            PlaybackTimestamps(position, durationMs, playing, skipDirection, trackWidthPx)
+            PlaybackTimestamps(position, durationMs, playing, skipDirection, trackWidthPx, buffering)
         }
     }
 }

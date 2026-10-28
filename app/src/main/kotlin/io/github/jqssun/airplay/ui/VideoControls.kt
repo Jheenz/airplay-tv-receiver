@@ -159,13 +159,17 @@ fun PlayerButton(
 }
 
 @Composable
-fun PlayPauseButton(playing: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun PlayPauseButton(playing: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, buffering: Boolean = false) {
     PlayerButton(modifier = modifier.size(64.dp), onClick = onClick) {
-        Icon(
-            imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-            contentDescription = stringResource(R.string.cd_play_pause),
-            modifier = Modifier.size(48.dp)
-        )
+        if (buffering) {
+            PlaybackLoadingIndicator(Modifier.size(48.dp))
+        } else {
+            Icon(
+                imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = stringResource(R.string.cd_play_pause),
+                modifier = Modifier.size(48.dp)
+            )
+        }
     }
 }
 
